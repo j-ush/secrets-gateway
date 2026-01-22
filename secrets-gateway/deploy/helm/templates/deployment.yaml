@@ -1,0 +1,70 @@
+# Hardened deployment for secrets-gateway
+# Applies Defense-in-Depth principles to the gateway pod
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "secrets-gateway.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "secrets-gateway.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "secrets-gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "secrets-gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "secrets-gateway.serviceAccountName" . }}
+      # Pod-level security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # Container-level security context - maximum hardening
+          securityContext:
+            readOnlyRootFilesystem: true  # Prevents persistent malware
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: PORT
+              value: "8080"
+            - name: SECRETS_BACKEND_URL
+              value: "{{ .Values.config.secretsBackendUrl | default "http://secrets-backend.internal.svc.cluster.local" }}"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      # Ensure pods are spread across nodes for HA
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "secrets-gateway.selectorLabels" . | nindent 14 }}
+

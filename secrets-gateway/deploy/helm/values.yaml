@@ -1,0 +1,46 @@
+# Default values for secrets-gateway
+# Implements the Five-Layer Defense-in-Depth framework
+replicaCount: 3  # High availability
+
+image:
+  repository: secrets-gateway
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations:
+    # Cloud-native identity annotation (IRSA for AWS, Workload Identity for GCP)
+    eks.amazonaws.com/role-arn: ""  # Set to your IRSA role ARN
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Backend configuration - provider-agnostic
+config:
+  # The endpoint for your Level 1-4 agent backend
+  secretsBackendUrl: "http://secrets-backend.internal.svc.cluster.local"
+  # Refresh interval to mitigate staleness for non-renewable credentials
+  refreshInterval: "5m"
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi  # Matches -35% memory usage profile
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+networkPolicy:
+  enabled: true
+  allowedNamespaces: []
+
+rbac:
+  create: true
+
+# Override names
+nameOverride: ""
+fullnameOverride: ""
+

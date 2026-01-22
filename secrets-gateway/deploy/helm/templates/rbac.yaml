@@ -1,0 +1,50 @@
+# L3: ESO modification prevention - RBAC for secrets-gateway
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "secrets-gateway.fullname" . }}
+  labels:
+    {{- include "secrets-gateway.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets", "clustersecretstores", "secretstores"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "secrets-gateway.fullname" . }}
+  labels:
+    {{- include "secrets-gateway.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "secrets-gateway.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "secrets-gateway.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+# L3: Developer role - prevents application developers from modifying ClusterSecretStore
+# resources to escalate their privileges
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: external-secrets-developer
+  labels:
+    {{- include "secrets-gateway.labels" . | nindent 4 }}
+rules:
+  # Developers can view but NOT create/update ClusterSecretStores (privilege escalation prevention)
+  - apiGroups: ["external-secrets.io"]
+    resources: ["clustersecretstores"]
+    verbs: ["get", "list", "watch"]  # No "create" or "update" allowed
+  # Developers can fully manage ExternalSecrets in their namespace
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+{{- end }}
+
